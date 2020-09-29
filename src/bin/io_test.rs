@@ -9,10 +9,10 @@ fn main() {
     let manager = DirectInputManager::new(dll_instance).expect("Failed to initialize manager");
     let devices = manager.enum_devices().expect("Failed to enumerate devices");
 
-    let device = devices.first().expect("No device found");
+    let device_info = devices.first().expect("No device found");
 
-    let mut device = manager
-        .create_device(device)
+    let device = manager
+        .create_device(device_info)
         .expect("Failed to create device instance");
 
     let caps = device
