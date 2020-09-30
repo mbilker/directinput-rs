@@ -1,11 +1,12 @@
 mod device;
 mod device_capabilities;
 mod device_info;
+mod error;
 mod joy_state;
 mod manager;
 
-pub use self::device::Device;
-pub use self::device_capabilities::DeviceCapabilities;
-pub use self::device_info::DirectInputDeviceInfo;
-pub use self::joy_state::JoyState;
-pub use self::manager::DirectInputManager;
+pub use crate::device::Device;
+pub use crate::device_capabilities::DeviceCapabilities;
+pub use crate::device_info::DirectInputDeviceInfo;
+pub use crate::joy_state::JoyState;
+pub use crate::manager::DirectInputManager;

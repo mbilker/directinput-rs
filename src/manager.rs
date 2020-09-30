@@ -10,6 +10,7 @@ use winapi::um::dinput::{
 
 use crate::device::Device;
 use crate::device_info::DirectInputDeviceInfo;
+use crate::error::DirectInputError;
 
 #[derive(Debug)]
 pub struct DirectInputManager {
@@ -32,8 +33,12 @@ impl DirectInputManager {
         if winerror::SUCCEEDED(hr) {
             Ok(Self { iface })
         } else {
-            Err(io::Error::from_raw_os_error(hr))
+            Err(DirectInputError::from_hresult(hr))
         }
+    }
+
+    unsafe fn iface(&self) -> &IDirectInput8W {
+        &*self.iface
     }
 
     pub fn enum_devices(&self) -> io::Result<Vec<DirectInputDeviceInfo>> {
@@ -55,7 +60,7 @@ impl DirectInputManager {
         let mut devices = Vec::new();
 
         let hr = unsafe {
-            (*self.iface).EnumDevices(
+            self.iface().EnumDevices(
                 DI8DEVCLASS_GAMECTRL,
                 Some(enumeration_callback),
                 &mut devices as *mut Vec<DirectInputDeviceInfo> as _,
@@ -66,14 +71,14 @@ impl DirectInputManager {
         if winerror::SUCCEEDED(hr) {
             Ok(devices)
         } else {
-            Err(io::Error::from_raw_os_error(hr))
+            Err(DirectInputError::from_hresult(hr))
         }
     }
 
     pub fn create_device(&self, device_info: &DirectInputDeviceInfo) -> io::Result<Device> {
         let mut iface: *mut IDirectInputDevice8W = ptr::null_mut();
         let hr = unsafe {
-            (*self.iface).CreateDevice(
+            self.iface().CreateDevice(
                 device_info.guid_instance(),
                 &mut iface as *mut _ as _,
                 ptr::null_mut(),
