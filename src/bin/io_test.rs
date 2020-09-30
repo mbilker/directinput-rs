@@ -26,6 +26,7 @@ fn main() {
 
     //device.init_event().expect("Failed to initialize event");
     device.init().expect("Failed to initialize device");
+    device.acquire().expect("Failed to acquire device access");
 
     let mut previous_state: Option<JoyState> = None;
 

@@ -67,7 +67,6 @@ impl Device {
         //data_format.dwFlags = DIDF_RELAXIS;
 
         self.set_data_format(&data_format)?;
-        self.acquire()?;
 
         Ok(())
     }
