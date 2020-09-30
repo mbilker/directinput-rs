@@ -8,6 +8,11 @@ build = "build.rs"
 [lib]
 crate-type = ["lib"]
 
+[dependencies]
+bitflags = "1.2.1"
+raw-window-handle = "0.3.3"
+winit = "0.22.2"
+
 [dependencies.winapi]
 git = "https://github.com/mbilker/winapi-rs.git"
 branch = "0.3"
