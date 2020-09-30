@@ -1,28 +1,29 @@
 use std::convert::TryInto;
-use std::ffi::OsString;
+//use std::ffi::OsString;
 use std::io;
 use std::mem::{self, MaybeUninit};
-use std::os::windows::ffi::OsStringExt;
+//use std::os::windows::ffi::OsStringExt;
 use std::ptr;
 use std::time::Duration;
 
 use winapi::shared::minwindef::{BOOL, DWORD, FALSE, LPVOID};
 use winapi::shared::ntdef::HANDLE;
-use winapi::shared::winerror::{self, HRESULT, S_OK};
+use winapi::shared::winerror::{self, E_HANDLE, S_OK};
 use winapi::um::dinput::{
     c_dfDIJoystick2, IDirectInputDevice8W, DIDATAFORMAT, DIDEVCAPS, DIDFT_AXIS, DIENUM_CONTINUE,
-    DIPH_BYID, DIPROPHEADER, DIPROPRANGE, DIPROP_RANGE, LPCDIDEVICEOBJECTINSTANCEW,
+    DIERR_OTHERAPPHASPRIO, DIPH_BYID, DIPROPHEADER, DIPROPRANGE, DIPROP_RANGE, DI_NOEFFECT, DI_OK,
+    DI_POLLEDDEVICE, LPCDIDEVICEOBJECTINSTANCEW,
 };
 use winapi::um::errhandlingapi;
 use winapi::um::handleapi::{self, INVALID_HANDLE_VALUE};
 use winapi::um::synchapi;
 use winapi::um::winbase::{INFINITE, WAIT_OBJECT_0};
 
-use super::device_capabilities::DeviceCapabilities;
+use crate::device_capabilities::DeviceCapabilities;
+use crate::error::{DirectInputError, DirectInputStatus};
 
 pub struct Device {
     iface: *mut IDirectInputDevice8W,
-    #[allow(dead_code)]
     event: Option<HANDLE>,
 }
 
@@ -50,7 +51,7 @@ impl Device {
         if winerror::SUCCEEDED(hr) {
             Ok(DeviceCapabilities::from_instance(caps))
         } else {
-            Err(io::Error::from_raw_os_error(hr))
+            Err(DirectInputError::from_hresult(hr))
         }
     }
 
@@ -71,8 +72,7 @@ impl Device {
         Ok(())
     }
 
-    #[allow(dead_code)]
-    pub fn init_event(&mut self) -> io::Result<()> {
+    pub fn init_event(&mut self) -> io::Result<DirectInputStatus> {
         let hr = self
             .event
             .take()
@@ -86,7 +86,7 @@ impl Device {
             .unwrap_or(S_OK);
 
         if !winerror::SUCCEEDED(hr) {
-            return Err(io::Error::from_raw_os_error(hr));
+            return Err(DirectInputError::from_hresult(hr));
         }
 
         let event =
@@ -100,11 +100,17 @@ impl Device {
         if winerror::SUCCEEDED(hr) {
             self.event = Some(event);
 
-            Ok(())
+            Ok(match hr {
+                // If the method succeeds, the return value is DI_OK
+                DI_OK => DirectInputStatus::Ok,
+                // or DI_POLLEDDEVICE
+                DI_POLLEDDEVICE => DirectInputStatus::PolledDevice,
+                hr => DirectInputStatus::from_hresult_or_ok(hr),
+            })
         } else {
             unsafe { handleapi::CloseHandle(event) };
 
-            Err(io::Error::from_raw_os_error(hr))
+            Err(DirectInputError::from_hresult(hr))
         }
     }
 
@@ -124,6 +130,7 @@ impl Device {
             if !device_object_instance.is_null() {
                 let device_object_instance = unsafe { &*device_object_instance };
 
+                /*
                 let end = device_object_instance
                     .tszName
                     .iter()
@@ -131,6 +138,7 @@ impl Device {
                     .unwrap_or(device_object_instance.tszName.len());
                 let name = OsString::from_wide(&device_object_instance.tszName[..end]);
                 println!("name: {:?}", name);
+                */
 
                 let prop_range = DIPROPRANGE {
                     diph: DIPROPHEADER {
@@ -150,8 +158,8 @@ impl Device {
 
                 if !winerror::SUCCEEDED(hr) {
                     eprintln!(
-                        "Failed to set device range: {:?}",
-                        io::Error::from_raw_os_error(hr)
+                        "Failed to set device range: {}",
+                        DirectInputError::from_hresult(hr)
                     );
                 }
             }
@@ -173,47 +181,71 @@ impl Device {
         };
 
         if winerror::SUCCEEDED(hr) {
+            // If the method succeeds, the return value is DI_OK.
             Ok(())
         } else {
-            Err(io::Error::from_raw_os_error(hr))
+            Err(DirectInputError::from_hresult(hr))
         }
     }
 
     pub fn acquire(&self) -> io::Result<()> {
-        let hr = unsafe { (*self.iface).Acquire() };
+        let hr = unsafe { self.iface().Acquire() };
 
         if winerror::SUCCEEDED(hr) {
             Ok(())
         } else {
-            Err(io::Error::from_raw_os_error(hr))
+            Err(DirectInputError::from_hresult(hr))
         }
     }
 
-    pub fn set_data_format(&self, format: &DIDATAFORMAT) -> io::Result<()> {
-        let hr = unsafe { (*self.iface).SetDataFormat(format) };
+    pub fn set_data_format(&self, format: &DIDATAFORMAT) -> io::Result<DirectInputStatus> {
+        let hr = unsafe { self.iface().SetDataFormat(format) };
 
         if winerror::SUCCEEDED(hr) {
-            Ok(())
+            Ok(match hr {
+                // If the method succeeds, the return value is DI_OK.
+                DI_OK => DirectInputStatus::Ok,
+                hr => DirectInputStatus::from_hresult_or_ok(hr),
+            })
         } else {
-            Err(io::Error::from_raw_os_error(hr))
+            Err(match hr {
+                DIERR_OTHERAPPHASPRIO => DirectInputError::OtherAppHasPrio.to_io_error(),
+                hr => DirectInputError::from_hresult(hr),
+            })
         }
     }
 
-    #[allow(dead_code)]
-    pub fn poll(&self) -> io::Result<HRESULT> {
-        let hr = unsafe { (*self.iface).Poll() };
+    /// From MSDN:
+    /// > Retrieves data from polled objects on a DirectInput device. If the device does not require
+    /// > polling, calling this method has no effect. If a device that requires polling is not
+    /// > polled periodically, no new data is received from the device. Calling this method causes
+    /// > DirectInput to update the device state, generate input events (if buffered data is
+    /// > enabled), and set notification events (if notification is enabled).
+    /// >
+    /// > If the method succeeds, the return value is DI_OK, or DI_NOEFFECT if the device does not
+    /// > require polling. If the method fails, the return value can be one of the following error
+    /// > values: DIERR_INPUTLOST, DIERR_NOTACQUIRED, DIERR_NOTINITIALIZED.
+    pub fn poll(&self) -> io::Result<DirectInputStatus> {
+        let hr = unsafe { self.iface().Poll() };
 
         if winerror::SUCCEEDED(hr) {
-            Ok(hr)
+            Ok(match hr {
+                // If the method succeeds, the return value is DI_OK
+                DI_OK => DirectInputStatus::Ok,
+                // or `DI_NOEFFECT` if the device does not require polling.
+                DI_NOEFFECT => DirectInputStatus::NoEffect,
+                // Check for other status codes or fallback to `Ok`
+                hr => DirectInputStatus::from_hresult_or_ok(hr),
+            })
         } else {
-            Err(io::Error::from_raw_os_error(hr))
+            Err(DirectInputError::from_hresult(hr))
         }
     }
 
     pub fn get_state<T: FromDeviceState>(&self) -> io::Result<T> {
         let mut data: MaybeUninit<T::RawState> = MaybeUninit::uninit();
         let hr = unsafe {
-            (*self.iface).GetDeviceState(
+            self.iface().GetDeviceState(
                 mem::size_of::<T::RawState>() as DWORD,
                 data.as_mut_ptr() as *mut _,
             )
@@ -224,28 +256,34 @@ impl Device {
 
             Ok(T::from_instance(state))
         } else {
-            Err(io::Error::from_raw_os_error(hr))
+            Err(DirectInputError::from_hresult(hr))
         }
     }
 
-    #[allow(dead_code)]
-    pub fn wait(&self, timeout: Duration) -> io::Result<()> {
+    /// If event polling is enabled using `init_event`, this will wait for up to the duration
+    /// specified for an event update to arrive.
+    ///
+    /// Return value is `true` if an event arrived or `false` if the timeout expired. If no event
+    /// handle is configured, this method returns `true`.
+    pub fn wait(&self, timeout: Duration) -> io::Result<bool> {
         if let Some(event) = self.event {
             let millis: DWORD = timeout.as_millis().try_into().unwrap_or(INFINITE);
 
             let res = unsafe { synchapi::WaitForSingleObject(event, millis) };
-            if res != WAIT_OBJECT_0 {
+            if res == WAIT_OBJECT_0 {
+                Ok(true)
+            } else {
                 let err = unsafe { errhandlingapi::GetLastError() };
 
                 if err == 0 {
-                    return Ok(());
+                    Ok(false)
                 } else {
-                    return Err(io::Error::last_os_error());
+                    Err(io::Error::from_raw_os_error(err as i32))
                 }
             }
+        } else {
+            Ok(true)
         }
-
-        Ok(())
     }
 }
 
