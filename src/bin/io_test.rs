@@ -1,8 +1,11 @@
 use std::ptr;
+use std::thread;
 use std::time::Duration;
 
-use directinput::{DirectInputManager, JoyState};
+use directinput::{CooperativeLevel, Device, DirectInputManager, JoyState};
 use winapi::um::libloaderapi;
+use winit::event_loop::{ControlFlow, EventLoop};
+use winit::window::WindowBuilder;
 
 fn main() {
     let dll_instance = unsafe { libloaderapi::GetModuleHandleW(ptr::null_mut()) };
@@ -11,7 +14,7 @@ fn main() {
 
     let device_info = devices.first().expect("No device found");
 
-    let device = manager
+    let mut device = manager
         .create_device(device_info)
         .expect("Failed to create device instance");
 
@@ -20,22 +23,49 @@ fn main() {
         .expect("Failed to get device capabilities");
     println!("{:#?}", caps);
 
+    let event_loop = EventLoop::new();
+    let window = WindowBuilder::new()
+        .with_title("directinput-rs")
+        .with_visible(false)
+        .build(&event_loop)
+        .expect("Failed to create window");
+
     device
         .set_axes_range(i16::min_value() as i32, i16::max_value() as i32)
         .expect("Failed to set axes range");
 
-    //device.init_event().expect("Failed to initialize event");
+    device.init_event().expect("Failed to initialize event");
     device.init().expect("Failed to initialize device");
+    device
+        .set_cooperative_level(
+            &window,
+            CooperativeLevel::BACKGROUND | CooperativeLevel::EXCLUSIVE,
+        )
+        .expect("Failed to set cooperative level");
     device.acquire().expect("Failed to acquire device access");
 
+    thread::Builder::new()
+        .name(String::from("directinput-rs input processing"))
+        .spawn(move || input_thread(device))
+        .expect("Failed to spawn window handler thread");
+
+    event_loop.run(move |_event, _, control_flow| {
+        *control_flow = ControlFlow::Wait;
+    });
+}
+
+fn input_thread(device: Device) {
     let mut previous_state: Option<JoyState> = None;
 
     loop {
-        /*
+        println!(
+            "poll result: {:?}",
+            device.poll().expect("Failed to poll device")
+        );
+
         device
             .wait(Duration::from_secs(5))
             .expect("Failed to wait for event");
-         */
 
         let state = device
             .get_state::<JoyState>()

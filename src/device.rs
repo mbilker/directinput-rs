@@ -6,8 +6,10 @@ use std::mem::{self, MaybeUninit};
 use std::ptr;
 use std::time::Duration;
 
+use raw_window_handle::{HasRawWindowHandle, RawWindowHandle};
 use winapi::shared::minwindef::{BOOL, DWORD, FALSE, LPVOID};
 use winapi::shared::ntdef::HANDLE;
+use winapi::shared::windef::HWND;
 use winapi::shared::winerror::{self, E_HANDLE, S_OK};
 use winapi::um::dinput::{
     c_dfDIJoystick2, IDirectInputDevice8W, DIDATAFORMAT, DIDEVCAPS, DIDFT_AXIS, DIENUM_CONTINUE,
@@ -19,6 +21,7 @@ use winapi::um::handleapi::{self, INVALID_HANDLE_VALUE};
 use winapi::um::synchapi;
 use winapi::um::winbase::{INFINITE, WAIT_OBJECT_0};
 
+use crate::cooperative_level::CooperativeLevel;
 use crate::device_capabilities::DeviceCapabilities;
 use crate::error::{DirectInputError, DirectInputStatus};
 
@@ -32,6 +35,8 @@ pub trait FromDeviceState {
 
     fn from_instance(state: Self::RawState) -> Self;
 }
+
+unsafe impl Send for Device {}
 
 impl Device {
     pub(crate) fn from_instance(iface: *mut IDirectInputDevice8W) -> Self {
@@ -194,6 +199,27 @@ impl Device {
             Ok(())
         } else {
             Err(DirectInputError::from_hresult(hr))
+        }
+    }
+
+    pub fn set_cooperative_level<H: HasRawWindowHandle>(
+        &self,
+        window_handle: &H,
+        flags: CooperativeLevel,
+    ) -> io::Result<DirectInputStatus> {
+        let hwnd = match window_handle.raw_window_handle() {
+            RawWindowHandle::Windows(handle) => handle.hwnd,
+            _ => return Err(DirectInputError::Handle.to_io_error()),
+        };
+        let hr = unsafe { self.iface().SetCooperativeLevel(hwnd as HWND, flags.bits()) };
+
+        if winerror::SUCCEEDED(hr) {
+            Ok(DirectInputStatus::from_hresult_or_ok(hr))
+        } else {
+            Err(match hr {
+                E_HANDLE => DirectInputError::Handle.to_io_error(),
+                hr => DirectInputError::from_hresult(hr),
+            })
         }
     }
 
