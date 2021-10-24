@@ -31,7 +31,7 @@ fn main() {
         .expect("Failed to create window");
 
     device
-        .set_axes_range(i16::min_value() as i32, i16::max_value() as i32)
+        .set_axes_range(i16::MIN as i32, i16::MAX as i32)
         .expect("Failed to set axes range");
 
     device.init_event().expect("Failed to initialize event");
@@ -74,7 +74,7 @@ fn input_thread(device: Device) {
 
         // Detect negative-to-positive range rollover
         let change = state.x as i32 - last_state.x as i32;
-        let rollover_detect = if change.abs() > i16::max_value() as i32 {
+        let rollover_detect = if change.abs() > i16::MAX as i32 {
             ", roll-over detected!"
         } else {
             ""
