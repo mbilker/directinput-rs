@@ -1,24 +1,26 @@
 use std::error::Error;
 use std::fmt;
-use std::io;
 
-use winapi::shared::winerror::HRESULT;
 use winapi::um::dinput::{
     DIERR_ACQUIRED, DIERR_ALREADYINITIALIZED, DIERR_BADDRIVERVER, DIERR_BETADIRECTINPUTVERSION,
-    DIERR_DEVICEFULL, DIERR_DEVICENOTREG, DIERR_EFFECTPLAYING, DIERR_GENERIC, DIERR_HASEFFECTS,
+    DIERR_DEVICEFULL, DIERR_DEVICENOTREG, DIERR_EFFECTPLAYING, DIERR_HASEFFECTS,
     DIERR_INCOMPLETEEFFECT, DIERR_INPUTLOST, DIERR_INSUFFICIENTPRIVS, DIERR_INVALIDPARAM,
     DIERR_MAPFILEFAIL, DIERR_MOREDATA, DIERR_NOAGGREGATION, DIERR_NOINTERFACE, DIERR_NOTACQUIRED,
     DIERR_NOTBUFFERED, DIERR_NOTDOWNLOADED, DIERR_NOTEXCLUSIVEACQUIRED, DIERR_NOTINITIALIZED,
     DIERR_OBJECTNOTFOUND, DIERR_OLDDIRECTINPUTVERSION, DIERR_OUTOFMEMORY, DIERR_REPORTFULL,
-    DIERR_UNPLUGGED, DIERR_UNSUPPORTED, DI_DOWNLOADSKIPPED, DI_EFFECTRESTARTED, DI_OK,
-    DI_POLLEDDEVICE, DI_SETTINGSNOTSAVED, DI_TRUNCATED, DI_TRUNCATEDANDRESTARTED, DI_WRITEPROTECT,
-    E_PENDING,
+    DIERR_UNPLUGGED, DIERR_UNSUPPORTED,
 };
-/*
-use winapi::um::dinput::{
-    DIERR_HANDLEEXISTS, DIERR_NOTFOUND, DIERR_NOTINITIALIZED, DIERR_OTHERAPPHASPRIO, DIERR_READONLY,
+use windows::HRESULT;
+
+use crate::bindings::Windows::Win32::Devices::HumanInterfaceDevice::{
+    DI_DOWNLOADSKIPPED, DI_EFFECTRESTARTED, DI_POLLEDDEVICE, DI_SETTINGSNOTSAVED, DI_TRUNCATED,
+    DI_TRUNCATEDANDRESTARTED, DI_WRITEPROTECT,
 };
-*/
+use crate::bindings::Windows::Win32::Foundation::{E_FAIL, S_OK};
+use crate::bindings::Windows::Win32::System::Com::E_PENDING;
+use crate::bindings::Windows::Win32::System::Diagnostics::Debug::GetLastError;
+
+pub type Result<T, E = DirectInputError> = std::result::Result<T, E>;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum DirectInputStatus {
@@ -47,7 +49,7 @@ pub enum DirectInputError {
     EffectPlaying,
     Generic,
     Handle,
-    //HandleExists,
+    HandleExists,
     HasEffects,
     IncompleteEffect,
     InputLost,
@@ -67,10 +69,11 @@ pub enum DirectInputError {
     OtherAppHasPrio,
     OutOfMemory,
     Pending,
-    //ReadOnly,
+    ReadOnly,
     ReportFull,
     Unplugged,
     Unsupported,
+    Unknown(HRESULT),
 }
 
 impl DirectInputStatus {
@@ -81,36 +84,41 @@ impl DirectInputStatus {
         match hr {
             DI_DOWNLOADSKIPPED => Some(Self::DownloadSkipped),
             DI_EFFECTRESTARTED => Some(Self::EffectRestarted),
-            DI_OK => Some(Self::Ok),
             DI_POLLEDDEVICE => Some(Self::PolledDevice),
             DI_SETTINGSNOTSAVED => Some(Self::SettingsNotSaved),
             DI_TRUNCATED => Some(Self::Truncated),
             DI_TRUNCATEDANDRESTARTED => Some(Self::TruncatedAndRestarted),
             DI_WRITEPROTECT => Some(Self::WriteProtect),
+            S_OK => Some(Self::Ok),
             _ => None,
         }
     }
 
+    #[inline]
     pub(crate) fn from_hresult_or_ok(hr: HRESULT) -> Self {
-        if let Some(status) = Self::from_hresult(hr) {
-            status
-        } else {
-            DirectInputStatus::Ok
-        }
+        Self::from_hresult(hr).unwrap_or(Self::Ok)
     }
 }
 
 impl DirectInputError {
-    pub(crate) fn from_hresult(hr: HRESULT) -> io::Error {
-        if let Some(error) = Self::hresult_matches(hr) {
-            error.to_io_error()
-        } else {
-            io::Error::from_raw_os_error(hr)
-        }
+    #[inline]
+    pub(crate) fn from_hresult(hr: HRESULT) -> Self {
+        Self::hresult_matches(hr).unwrap_or(Self::Unknown(hr))
+    }
+
+    pub(crate) fn from_last_error() -> Self {
+        let err = unsafe { GetLastError() };
+
+        Self::from_hresult(HRESULT::from(err))
     }
 
     pub(crate) fn hresult_matches(hr: HRESULT) -> Option<Self> {
         match hr {
+            E_FAIL => return Some(Self::Generic),
+            E_PENDING => return Some(Self::Pending),
+            _ => {}
+        };
+        match hr.0 as i32 {
             DIERR_ACQUIRED => Some(Self::Acquired),
             DIERR_ALREADYINITIALIZED => Some(Self::AlreadyInitialized),
             DIERR_BADDRIVERVER => Some(Self::BadDriverVersion),
@@ -118,7 +126,7 @@ impl DirectInputError {
             DIERR_DEVICEFULL => Some(Self::DeviceFull),
             DIERR_DEVICENOTREG => Some(Self::DeviceNotReg),
             DIERR_EFFECTPLAYING => Some(Self::EffectPlaying),
-            DIERR_GENERIC => Some(Self::Generic),
+            //DIERR_GENERIC => Some(Self::Generic),
             //DIERR_HANDLEEXISTS => Some(Self::HandleExists),
             DIERR_HASEFFECTS => Some(Self::HasEffects),
             DIERR_INCOMPLETEEFFECT => Some(Self::IncompleteEffect),
@@ -142,20 +150,26 @@ impl DirectInputError {
             DIERR_REPORTFULL => Some(Self::ReportFull),
             DIERR_UNPLUGGED => Some(Self::Unplugged),
             DIERR_UNSUPPORTED => Some(Self::Unsupported),
-            E_PENDING => Some(Self::Pending),
+            //E_PENDING => Some(Self::Pending),
             _ => None,
         }
-    }
-
-    pub(crate) fn to_io_error(self) -> io::Error {
-        io::Error::new(io::ErrorKind::Other, self)
     }
 }
 
 impl fmt::Display for DirectInputError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        fmt::Debug::fmt(self, f)
+        match self {
+            Self::Unknown(hr) => fmt::Debug::fmt(hr, f),
+            _ => fmt::Debug::fmt(self, f),
+        }
     }
 }
 
 impl Error for DirectInputError {}
+
+impl From<windows::Error> for DirectInputError {
+    #[inline]
+    fn from(value: windows::Error) -> Self {
+        Self::from_hresult(value.code())
+    }
+}

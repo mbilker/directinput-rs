@@ -1,50 +1,61 @@
-use std::io;
-use std::ptr;
+use std::ffi::c_void;
 
-use winapi::shared::minwindef::{BOOL, HINSTANCE, LPVOID};
-use winapi::shared::winerror;
-use winapi::um::dinput::{
-    self, IDirectInput8W, IDirectInputDevice8W, IID_IDirectInput8W, DI8DEVCLASS_GAMECTRL,
-    DIEDFL_ALLDEVICES, DIENUM_CONTINUE, DIRECTINPUT_VERSION, LPCDIDEVICEINSTANCEW,
+use windows::Interface;
+
+use crate::bindings::Windows::Win32::Devices::HumanInterfaceDevice::{
+    DirectInput8Create, IDirectInput8W, IDirectInputDevice8W, DI8DEVCLASS_GAMECTRL,
+    DIDEVICEINSTANCEW, DIEDFL_ALLDEVICES, DIENUM_CONTINUE, DIRECTINPUT_VERSION,
 };
-
+use crate::bindings::Windows::Win32::Foundation::{BOOL, HINSTANCE};
 use crate::device::Device;
 use crate::device_info::DirectInputDeviceInfo;
-use crate::error::DirectInputError;
+use crate::error::{DirectInputError, Result};
 
 #[derive(Debug)]
 pub struct DirectInputManager {
-    iface: *mut IDirectInput8W,
+    iface: IDirectInput8W,
+}
+
+pub trait IntoModuleInstance {
+    fn into_instance(self) -> HINSTANCE;
+}
+
+impl IntoModuleInstance for *mut c_void {
+    fn into_instance(self) -> HINSTANCE {
+        HINSTANCE(self as isize)
+    }
+}
+
+impl IntoModuleInstance for HINSTANCE {
+    fn into_instance(self) -> HINSTANCE {
+        self
+    }
 }
 
 impl DirectInputManager {
-    pub fn new(dll_instance: HINSTANCE) -> io::Result<Self> {
-        let mut iface: *mut IDirectInput8W = ptr::null_mut();
-        let hr = unsafe {
-            dinput::DirectInput8Create(
-                dll_instance,
+    pub fn new(instance: impl IntoModuleInstance) -> Result<Self> {
+        let mut iface: Option<IDirectInput8W> = None;
+
+        unsafe {
+            DirectInput8Create(
+                instance.into_instance(),
                 DIRECTINPUT_VERSION,
-                &IID_IDirectInput8W,
-                &mut iface as *mut *mut IDirectInput8W as *mut _,
-                ptr::null_mut(),
-            )
+                &IDirectInput8W::IID,
+                &mut iface as *mut _ as _,
+                None,
+            )?;
         };
 
-        if winerror::SUCCEEDED(hr) {
-            Ok(Self { iface })
-        } else {
-            Err(DirectInputError::from_hresult(hr))
+        match iface {
+            Some(iface) => Ok(Self { iface }),
+            None => Err(DirectInputError::BadDriverVersion),
         }
     }
 
-    unsafe fn iface(&self) -> &IDirectInput8W {
-        &*self.iface
-    }
-
-    pub fn enum_devices(&self) -> io::Result<Vec<DirectInputDeviceInfo>> {
+    pub fn enum_devices(&self) -> Result<Vec<DirectInputDeviceInfo>> {
         extern "system" fn enumeration_callback(
-            device_instance: LPCDIDEVICEINSTANCEW,
-            ctx: LPVOID,
+            device_instance: *mut DIDEVICEINSTANCEW,
+            ctx: *mut c_void,
         ) -> BOOL {
             let devices = unsafe { &mut *(ctx as *mut Vec<DirectInputDeviceInfo>) };
 
@@ -54,52 +65,37 @@ impl DirectInputManager {
                 }));
             }
 
-            DIENUM_CONTINUE
+            BOOL(DIENUM_CONTINUE as _)
         }
 
         let mut devices = Vec::new();
 
-        let hr = unsafe {
-            self.iface().EnumDevices(
+        unsafe {
+            self.iface.EnumDevices(
                 DI8DEVCLASS_GAMECTRL,
                 Some(enumeration_callback),
                 &mut devices as *mut Vec<DirectInputDeviceInfo> as _,
                 DIEDFL_ALLDEVICES,
-            )
+            )?;
         };
 
-        if winerror::SUCCEEDED(hr) {
-            Ok(devices)
-        } else {
-            Err(DirectInputError::from_hresult(hr))
-        }
+        Ok(devices)
     }
 
-    pub fn create_device(&self, device_info: &DirectInputDeviceInfo) -> io::Result<Device> {
-        let mut iface: *mut IDirectInputDevice8W = ptr::null_mut();
-        let hr = unsafe {
-            self.iface().CreateDevice(
-                device_info.guid_instance(),
-                &mut iface as *mut _ as _,
-                ptr::null_mut(),
-            )
+    pub fn create_device(
+        &self,
+        device_info: &DirectInputDeviceInfo,
+    ) -> Result<Device, DirectInputError> {
+        let mut iface: Option<IDirectInputDevice8W> = None;
+
+        unsafe {
+            self.iface
+                .CreateDevice(device_info.guid_instance(), &mut iface, None)?;
         };
 
-        if winerror::SUCCEEDED(hr) {
-            Ok(Device::from_instance(iface))
-        } else {
-            Err(io::Error::from_raw_os_error(hr))
-        }
-    }
-}
-
-impl Drop for DirectInputManager {
-    fn drop(&mut self) {
-        if !self.iface.is_null() {
-            unsafe {
-                (*self.iface).Release();
-                self.iface = ptr::null_mut();
-            };
+        match iface {
+            Some(device) => Ok(Device::new(device)),
+            None => Err(DirectInputError::InputLost),
         }
     }
 }
@@ -108,21 +104,20 @@ impl Drop for DirectInputManager {
 mod tests {
     use std::time::Duration;
 
-    use winapi::um::libloaderapi;
-
     use super::*;
+    use crate::bindings::Windows::Win32::System::LibraryLoader::GetModuleHandleW;
     use crate::joy_state::JoyState;
 
     #[test]
     fn test_create_instance() {
-        let dll_instance = unsafe { libloaderapi::GetModuleHandleW(ptr::null_mut()) };
+        let dll_instance = unsafe { GetModuleHandleW(None) };
 
         DirectInputManager::new(dll_instance).expect("Failed to initialize manager");
     }
 
     #[test]
     fn test_enumeration() {
-        let dll_instance = unsafe { libloaderapi::GetModuleHandleW(ptr::null_mut()) };
+        let dll_instance = unsafe { GetModuleHandleW(None) };
         let manager = DirectInputManager::new(dll_instance).expect("Failed to initialize manager");
 
         manager.enum_devices().expect("Failed to enumerate devices");
@@ -130,7 +125,7 @@ mod tests {
 
     #[test]
     fn test_create() {
-        let dll_instance = unsafe { libloaderapi::GetModuleHandleW(ptr::null_mut()) };
+        let dll_instance = unsafe { GetModuleHandleW(None) };
         let manager = DirectInputManager::new(dll_instance).expect("Failed to initialize manager");
         let devices = manager.enum_devices().expect("Failed to enumerate devices");
 

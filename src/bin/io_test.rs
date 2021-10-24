@@ -1,14 +1,12 @@
-use std::ptr;
 use std::thread;
 use std::time::Duration;
 
 use directinput::{CooperativeLevel, Device, DirectInputManager, JoyState};
-use winapi::um::libloaderapi;
 use winit::event_loop::{ControlFlow, EventLoop};
 use winit::window::WindowBuilder;
 
 fn main() {
-    let dll_instance = unsafe { libloaderapi::GetModuleHandleW(ptr::null_mut()) };
+    let dll_instance = directinput::current_module();
     let manager = DirectInputManager::new(dll_instance).expect("Failed to initialize manager");
     let devices = manager.enum_devices().expect("Failed to enumerate devices");
 

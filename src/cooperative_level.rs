@@ -1,11 +1,11 @@
 use bitflags::bitflags;
-use winapi::shared::minwindef::DWORD;
-use winapi::um::dinput::{
+
+use crate::bindings::Windows::Win32::Devices::HumanInterfaceDevice::{
     DISCL_BACKGROUND, DISCL_EXCLUSIVE, DISCL_FOREGROUND, DISCL_NONEXCLUSIVE, DISCL_NOWINKEY,
 };
 
 bitflags! {
-    pub struct CooperativeLevel: DWORD {
+    pub struct CooperativeLevel: u32 {
         /// The application requires background access. If background access is granted, the device
         /// can be acquired at any time, even when the associated window is not the active window.
         const BACKGROUND = DISCL_BACKGROUND;

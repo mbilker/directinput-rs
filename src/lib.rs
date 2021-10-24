@@ -1,3 +1,4 @@
+mod bindings;
 mod cooperative_level;
 mod device;
 mod device_capabilities;
@@ -12,3 +13,9 @@ pub use crate::device_capabilities::DeviceCapabilities;
 pub use crate::device_info::DirectInputDeviceInfo;
 pub use crate::joy_state::JoyState;
 pub use crate::manager::DirectInputManager;
+
+#[doc(hidden)]
+#[inline]
+pub fn current_module() -> crate::bindings::Windows::Win32::Foundation::HINSTANCE {
+    unsafe { crate::bindings::Windows::Win32::System::LibraryLoader::GetModuleHandleW(None) }
+}

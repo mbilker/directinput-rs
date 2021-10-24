@@ -2,15 +2,16 @@ use std::ffi::OsString;
 use std::fmt::{self, Write};
 use std::os::windows::ffi::OsStringExt;
 
-use winapi::shared::guiddef::GUID;
-use winapi::um::dinput::DIDEVICEINSTANCEW;
+use windows::Guid;
+
+use crate::bindings::Windows::Win32::Devices::HumanInterfaceDevice::DIDEVICEINSTANCEW;
 
 pub struct DirectInputDeviceInfo {
-    guid_instance: GUID,
-    guid_product: GUID,
+    guid_instance: Guid,
+    guid_product: Guid,
     instance_name: OsString,
     product_name: OsString,
-    force_feedback_driver: GUID,
+    force_feedback_driver: Guid,
     usage_page: u16,
     usage: u16,
 }
@@ -45,7 +46,7 @@ impl DirectInputDeviceInfo {
         }
     }
 
-    pub(crate) fn guid_instance(&self) -> &GUID {
+    pub(crate) fn guid_instance(&self) -> &Guid {
         &self.guid_instance
     }
 
@@ -54,24 +55,24 @@ impl DirectInputDeviceInfo {
     }
 }
 
-struct GuidString<'a>(&'a GUID);
+struct GuidString<'a>(&'a Guid);
 
 impl<'a> fmt::Display for GuidString<'a> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(
             f,
             "{:08x}-{:04x}-{:04x}-{:02x}{:02x}{:02x}{:02x}{:02x}{:02x}{:02x}{:02x}",
-            self.0.Data1,
-            self.0.Data2,
-            self.0.Data3,
-            self.0.Data4[0],
-            self.0.Data4[1],
-            self.0.Data4[2],
-            self.0.Data4[3],
-            self.0.Data4[4],
-            self.0.Data4[5],
-            self.0.Data4[6],
-            self.0.Data4[7]
+            self.0.data1,
+            self.0.data2,
+            self.0.data3,
+            self.0.data4[0],
+            self.0.data4[1],
+            self.0.data4[2],
+            self.0.data4[3],
+            self.0.data4[4],
+            self.0.data4[5],
+            self.0.data4[6],
+            self.0.data4[7]
         )
     }
 }

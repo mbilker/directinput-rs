@@ -1,4 +1,4 @@
-use winapi::um::dinput::DIDEVCAPS;
+use crate::bindings::Windows::Win32::Devices::HumanInterfaceDevice::DIDEVCAPS;
 
 #[derive(Debug)]
 pub struct DeviceCapabilities {
