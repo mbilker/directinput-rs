@@ -1,9 +1,36 @@
+use std::error::Error as StdError;
+use std::fmt;
 use std::thread;
 use std::time::Duration;
 
-use directinput::{CooperativeLevel, Device, DirectInputManager, JoyState};
+use directinput::{CooperativeLevel, Device, DirectInputError, DirectInputManager, JoyState};
+use winit::event::Event;
 use winit::event_loop::{ControlFlow, EventLoop};
 use winit::window::WindowBuilder;
+
+#[derive(Debug)]
+struct Error {
+    msg: &'static str,
+    source: DirectInputError,
+}
+
+impl Error {
+    fn new(source: DirectInputError, msg: &'static str) -> Self {
+        Self { msg, source }
+    }
+}
+
+impl fmt::Display for Error {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        f.write_str(self.msg)
+    }
+}
+
+impl StdError for Error {
+    fn source(&self) -> Option<&(dyn StdError + 'static)> {
+        Some(&self.source)
+    }
+}
 
 fn main() {
     let dll_instance = directinput::current_module();
@@ -21,7 +48,8 @@ fn main() {
         .expect("Failed to get device capabilities");
     println!("{:#?}", caps);
 
-    let event_loop = EventLoop::new();
+    let event_loop = EventLoop::with_user_event();
+    let proxy = event_loop.create_proxy();
     let window = WindowBuilder::new()
         .with_title("directinput-rs")
         .with_visible(false)
@@ -44,30 +72,53 @@ fn main() {
 
     thread::Builder::new()
         .name(String::from("directinput-rs input processing"))
-        .spawn(move || input_thread(device))
+        .spawn(move || {
+            if let Err(e) = input_thread(device) {
+                if let Err(e) = proxy.send_event(e) {
+                    eprintln!("Failed to send error to message handler: {}", e);
+                }
+            }
+        })
         .expect("Failed to spawn window handler thread");
 
-    event_loop.run(move |_event, _, control_flow| {
+    event_loop.run(move |event, _, control_flow| {
         *control_flow = ControlFlow::Wait;
+
+        match event {
+            Event::UserEvent(e) => {
+                eprintln!("Error: {}", e);
+
+                if let Some(e) = e.source() {
+                    eprintln!();
+                    eprintln!("Caused by:");
+                    eprintln!("    {}", e);
+                }
+
+                *control_flow = ControlFlow::Exit;
+            }
+            _ => {}
+        }
     });
 }
 
-fn input_thread(device: Device) {
+fn input_thread(device: Device) -> Result<(), Error> {
     let mut previous_state: Option<JoyState> = None;
 
     loop {
         println!(
             "poll result: {:?}",
-            device.poll().expect("Failed to poll device")
+            device
+                .poll()
+                .map_err(|source| Error::new(source, "Failed to poll devicec"))
         );
 
         device
             .wait(Duration::from_secs(5))
-            .expect("Failed to wait for event");
+            .map_err(|source| Error::new(source, "Failed to wait for event"))?;
 
         let state = device
             .get_state::<JoyState>()
-            .expect("Failed to get device state");
+            .map_err(|source| Error::new(source, "Failed to get device state"))?;
         let last_state = previous_state.as_ref().unwrap_or(&state);
 
         // Detect negative-to-positive range rollover
