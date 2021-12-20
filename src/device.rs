@@ -193,7 +193,7 @@ impl Device {
         flags: CooperativeLevel,
     ) -> Result<()> {
         let hwnd = match window_handle.raw_window_handle() {
-            RawWindowHandle::Windows(handle) => handle.hwnd,
+            RawWindowHandle::Win32(handle) => handle.hwnd,
             _ => return Err(DirectInputError::Handle),
         };
 
