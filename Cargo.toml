@@ -1,6 +1,6 @@
 [package]
 name = "directinput"
-version = "0.1.0"
+version = "0.2.0"
 authors = ["Matt Bilker <me@mbilker.us>"]
 edition = "2018"
 build = "build.rs"
