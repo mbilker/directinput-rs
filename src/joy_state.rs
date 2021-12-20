@@ -1,5 +1,6 @@
+use windows::Win32::Devices::HumanInterfaceDevice::DIJOYSTATE2;
+
 use super::device::FromDeviceState;
-use crate::bindings::Windows::Win32::Devices::HumanInterfaceDevice::DIJOYSTATE2;
 
 #[derive(Debug)]
 pub struct JoyState {

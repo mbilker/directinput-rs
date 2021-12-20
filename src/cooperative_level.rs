@@ -1,6 +1,5 @@
 use bitflags::bitflags;
-
-use crate::bindings::Windows::Win32::Devices::HumanInterfaceDevice::{
+use windows::Win32::Devices::HumanInterfaceDevice::{
     DISCL_BACKGROUND, DISCL_EXCLUSIVE, DISCL_FOREGROUND, DISCL_NONEXCLUSIVE, DISCL_NOWINKEY,
 };
 

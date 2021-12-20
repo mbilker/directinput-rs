@@ -11,20 +11,17 @@ use winapi::um::dinput::{
     c_dfDIJoystick2, DIERR_OTHERAPPHASPRIO, DIPH_BYID, DIPROP_RANGE, DI_NOEFFECT, DI_OK,
     DI_POLLEDDEVICE,
 };
-use windows::{Interface, HRESULT};
-
-use crate::bindings::Windows::Win32::Devices::HumanInterfaceDevice::{
+use windows::core::{Interface, HRESULT};
+use windows::Win32::Devices::HumanInterfaceDevice::{
     IDirectInputDevice8W, DIDATAFORMAT, DIDEVCAPS, DIDEVICEOBJECTINSTANCEW, DIDFT_AXIS,
     DIENUM_CONTINUE, DIPROPHEADER, DIPROPRANGE,
 };
-use crate::bindings::Windows::Win32::Foundation::{
-    CloseHandle, BOOL, HANDLE, HWND, INVALID_HANDLE_VALUE,
+use windows::Win32::Foundation::{
+    CloseHandle, GetLastError, BOOL, HANDLE, HWND, INVALID_HANDLE_VALUE,
 };
-use crate::bindings::Windows::Win32::System::Diagnostics::Debug::GetLastError;
-use crate::bindings::Windows::Win32::System::Threading::{
-    CreateEventW, WaitForSingleObject, WAIT_OBJECT_0,
-};
-use crate::bindings::Windows::Win32::System::WindowsProgramming::INFINITE;
+use windows::Win32::System::Threading::{CreateEventW, WaitForSingleObject, WAIT_OBJECT_0};
+use windows::Win32::System::WindowsProgramming::INFINITE;
+
 use crate::cooperative_level::CooperativeLevel;
 use crate::device_capabilities::DeviceCapabilities;
 use crate::error::{DirectInputError, DirectInputStatus, Result};

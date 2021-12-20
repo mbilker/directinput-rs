@@ -1,12 +1,12 @@
 use std::ffi::c_void;
 
-use windows::Interface;
-
-use crate::bindings::Windows::Win32::Devices::HumanInterfaceDevice::{
+use windows::core::Interface;
+use windows::Win32::Devices::HumanInterfaceDevice::{
     DirectInput8Create, IDirectInput8W, IDirectInputDevice8W, DI8DEVCLASS_GAMECTRL,
     DIDEVICEINSTANCEW, DIEDFL_ALLDEVICES, DIENUM_CONTINUE, DIRECTINPUT_VERSION,
 };
-use crate::bindings::Windows::Win32::Foundation::{BOOL, HINSTANCE};
+use windows::Win32::Foundation::{BOOL, HINSTANCE};
+
 use crate::device::Device;
 use crate::device_info::DirectInputDeviceInfo;
 use crate::error::{DirectInputError, Result};
@@ -82,10 +82,7 @@ impl DirectInputManager {
         Ok(devices)
     }
 
-    pub fn create_device(
-        &self,
-        device_info: &DirectInputDeviceInfo,
-    ) -> Result<Device, DirectInputError> {
+    pub fn create_device(&self, device_info: &DirectInputDeviceInfo) -> Result<Device> {
         let mut iface: Option<IDirectInputDevice8W> = None;
 
         unsafe {

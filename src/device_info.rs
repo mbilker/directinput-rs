@@ -2,16 +2,15 @@ use std::ffi::OsString;
 use std::fmt::{self, Write};
 use std::os::windows::ffi::OsStringExt;
 
-use windows::Guid;
-
-use crate::bindings::Windows::Win32::Devices::HumanInterfaceDevice::DIDEVICEINSTANCEW;
+use windows::core::GUID;
+use windows::Win32::Devices::HumanInterfaceDevice::DIDEVICEINSTANCEW;
 
 pub struct DirectInputDeviceInfo {
-    guid_instance: Guid,
-    guid_product: Guid,
+    guid_instance: GUID,
+    guid_product: GUID,
     instance_name: OsString,
     product_name: OsString,
-    force_feedback_driver: Guid,
+    force_feedback_driver: GUID,
     usage_page: u16,
     usage: u16,
 }
@@ -46,7 +45,7 @@ impl DirectInputDeviceInfo {
         }
     }
 
-    pub(crate) fn guid_instance(&self) -> &Guid {
+    pub(crate) fn guid_instance(&self) -> &GUID {
         &self.guid_instance
     }
 
@@ -55,7 +54,7 @@ impl DirectInputDeviceInfo {
     }
 }
 
-struct GuidString<'a>(&'a Guid);
+struct GuidString<'a>(&'a GUID);
 
 impl<'a> fmt::Display for GuidString<'a> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {

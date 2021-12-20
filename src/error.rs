@@ -10,15 +10,13 @@ use winapi::um::dinput::{
     DIERR_OBJECTNOTFOUND, DIERR_OLDDIRECTINPUTVERSION, DIERR_OUTOFMEMORY, DIERR_REPORTFULL,
     DIERR_UNPLUGGED, DIERR_UNSUPPORTED,
 };
-use windows::HRESULT;
-
-use crate::bindings::Windows::Win32::Devices::HumanInterfaceDevice::{
+use windows::core::HRESULT;
+use windows::Win32::Devices::HumanInterfaceDevice::{
     DI_DOWNLOADSKIPPED, DI_EFFECTRESTARTED, DI_POLLEDDEVICE, DI_SETTINGSNOTSAVED, DI_TRUNCATED,
     DI_TRUNCATEDANDRESTARTED, DI_WRITEPROTECT,
 };
-use crate::bindings::Windows::Win32::Foundation::{E_FAIL, S_OK};
-use crate::bindings::Windows::Win32::System::Com::E_PENDING;
-use crate::bindings::Windows::Win32::System::Diagnostics::Debug::GetLastError;
+use windows::Win32::Foundation::{GetLastError, E_FAIL, S_OK};
+use windows::Win32::System::Com::Urlmon::E_PENDING;
 
 pub type Result<T, E = DirectInputError> = std::result::Result<T, E>;
 
@@ -167,9 +165,9 @@ impl fmt::Display for DirectInputError {
 
 impl Error for DirectInputError {}
 
-impl From<windows::Error> for DirectInputError {
+impl From<windows::core::Error> for DirectInputError {
     #[inline]
-    fn from(value: windows::Error) -> Self {
+    fn from(value: windows::core::Error) -> Self {
         Self::from_hresult(value.code())
     }
 }

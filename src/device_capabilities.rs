@@ -1,4 +1,4 @@
-use crate::bindings::Windows::Win32::Devices::HumanInterfaceDevice::DIDEVCAPS;
+use windows::Win32::Devices::HumanInterfaceDevice::DIDEVCAPS;
 
 #[derive(Debug)]
 pub struct DeviceCapabilities {
